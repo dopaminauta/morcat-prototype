@@ -1,14 +1,25 @@
 {
   "name": "morcat-prototype",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Tokenized real estate prototype on ERC-3643 (T-REX). Testnet only.",
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.ts --network sepolia"
+    "deploy": "hardhat run scripts/deploy.ts --network sepolia",
+    "deploy:local": "hardhat run scripts/deploy.ts --network hardhat",
+    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
+    "interact": "hardhat run scripts/interact.ts --network sepolia",
+    "interact:localhost": "hardhat run scripts/interact.ts --network localhost",
+    "node": "hardhat node"
   },
-  "keywords": [],
+  "keywords": [
+    "erc-3643",
+    "t-rex",
+    "security-token",
+    "tokenization",
+    "real-estate",
+    "hardhat"
+  ],
   "type": "module",
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.15",
@@ -28,5 +39,6 @@
   },
   "dependencies": {
     "@onchain-id/solidity": "^2.2.1"
-  }
+  },
+  "license": "GPL-3.0"
 }
