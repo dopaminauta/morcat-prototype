@@ -61,7 +61,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -69,8 +69,6 @@ import "./Roles.sol";
 
 contract AgentRole is Ownable {
     using Roles for Roles.Role;
-
-    constructor() Ownable(msg.sender) {}
 
     Roles.Role private _agents;
 

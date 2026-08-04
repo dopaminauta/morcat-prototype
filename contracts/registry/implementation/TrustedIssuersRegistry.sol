@@ -61,7 +61,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "@onchain-id/solidity/contracts/interface/IClaimIssuer.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -72,7 +72,7 @@ import "../storage/TIRStorage.sol";
 contract TrustedIssuersRegistry is ITrustedIssuersRegistry, OwnableUpgradeable, TIRStorage {
 
     function init() external initializer {
-        __Ownable_init(msg.sender);
+        __Ownable_init();
     }
 
     /**

@@ -9,10 +9,11 @@ dotenv.config();
 const config: HardhatUserConfig = {
   plugins: [hardhatEthers, hardhatNodeTestRunner, hardhatVerify],
   solidity: {
-    version: "0.8.24",
+    // Fijo en 0.8.17 porque los contratos oficiales de T-REX v4.1.6 clavan
+    // `pragma solidity 0.8.17;` (sin ^). No es una elección nuestra.
+    version: "0.8.17",
     settings: {
       optimizer: { enabled: true, runs: 200 },
-      evmVersion: "cancun",
     },
   },
   networks: {

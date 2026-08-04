@@ -59,7 +59,7 @@
  *     You should have received a copy of the GNU General Public License
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "../roles/AgentRole.sol";
 import "../token/IToken.sol";
@@ -91,7 +91,7 @@ contract TREXFactory is ITREXFactory, Ownable {
     mapping(string => address) public tokenDeployed;
 
     /// constructor is setting the implementation authority and the Identity Factory of the TREX factory
-    constructor(address implementationAuthority_, address idFactory_) Ownable(msg.sender) {
+    constructor(address implementationAuthority_, address idFactory_) {
         setImplementationAuthority(implementationAuthority_);
         setIdFactory(idFactory_);
     }

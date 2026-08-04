@@ -75,7 +75,7 @@ export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOpti
 
   await (
     await ia.addAndUseTREXVersion(
-      { major: 4, minor: 1, patch: 3 },
+      { major: 4, minor: 1, patch: 6 },
       {
         tokenImplementation: implementations.token,
         ctrImplementation: implementations.claimTopicsRegistry,
@@ -86,7 +86,7 @@ export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOpti
       }
     )
   ).wait();
-  say("  versión 4.1.3 registrada y en uso ✔");
+  say("  versión 4.1.6 registrada y en uso ✔");
 
   // ─── 3. Proxies ─────────────────────────────────────────────────────────
   say("\n── Proxies ──");

@@ -60,7 +60,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./ITREXImplementationAuthority.sol";
@@ -101,7 +101,7 @@ contract TREXImplementationAuthority is ITREXImplementationAuthority, Ownable {
      *  emits `ImplementationAuthoritySet` event
      *  emits a `IAFactorySet` event
      */
-    constructor (bool referenceStatus, address trexFactory, address iaFactory) Ownable(msg.sender) {
+    constructor (bool referenceStatus, address trexFactory, address iaFactory) {
         _reference = referenceStatus;
         _trexFactory = trexFactory;
         _iaFactory = iaFactory;

@@ -60,7 +60,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "@onchain-id/solidity/contracts/interface/IClaimIssuer.sol";
 import "@onchain-id/solidity/contracts/interface/IIdentity.sol";
@@ -100,7 +100,7 @@ contract IdentityRegistry is IIdentityRegistry, AgentRoleUpgradeable, IRStorage 
         emit ClaimTopicsRegistrySet(_claimTopicsRegistry);
         emit TrustedIssuersRegistrySet(_trustedIssuersRegistry);
         emit IdentityStorageSet(_identityStorage);
-        __Ownable_init(msg.sender);
+        __Ownable_init();
     }
 
     /**

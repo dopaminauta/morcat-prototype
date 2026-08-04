@@ -1,9 +1,25 @@
 # 🏗️ Morcat Prototype — Setup & Faucets
 
 ## Estado
-- ✅ **Compila** — 41 contratos Solidity, solc 0.8.24 (Cancun)
+- ✅ **Compila** — 86 contratos, solc 0.8.17 (London)
 - ✅ **Deploya** — suite T-REX completa, verificada end-to-end en la red local
+- ✅ **T-REX v4.1.6 OFICIAL, sin modificar** — `@tokenysolutions/t-rex@4.1.6`
 - ⚠️ **Sin reglas de compliance cargadas** — ver "Lo que falta" abajo
+
+### Por qué los contratos son los oficiales tal cual
+`contracts/` es una copia literal de `@tokenysolutions/t-rex@4.1.6`, el paquete
+que publica Tokeny. No se tocó ni un archivo, incluidos `_testContracts/` y
+`compliance/legacy/` que el prototipo no usa. Borrarlos sería modificar el
+paquete, y el valor acá es poder decir "son los oficiales" sin asteriscos.
+
+Eso obliga a dos versiones que **no son elección nuestra**:
+- **solc 0.8.17** — 83 de los 86 archivos clavan `pragma solidity 0.8.17;` sin `^`.
+- **OpenZeppelin 4.8.3** — todas las releases de T-REX (hasta 4.2.0-beta) piden `^4.8.3`.
+
+Con esto el layout de storage coincide con el de los contratos auditados por
+Tokeny (`_agents` en slot 101). Una versión adaptada a OZ 5 compila y funciona
+igual, pero deja el layout corrido ~100 slots y pierde compatibilidad con las
+implementaciones oficiales.
 
 ## Estructura
 ```
@@ -113,12 +129,13 @@ El deploy levanta la infraestructura, no las reglas. Hoy:
 - El token arranca **pausado** (`unpause()` cuando corresponda).
 - `ClaimTopicsRegistry` está vacío ⇒ `isVerified()` devuelve **true** para
   cualquier identidad registrada (`IdentityRegistry.sol:176`).
-- `ModularCompliance` no tiene módulos ⇒ **no se aplica ninguna regla**.
-  Y no es sólo que estén sin configurar: en `contracts/compliance/modular/modules/`
-  hay únicamente las clases base (`AbstractModule`, `IModule`, `ModuleProxy`).
-  **No hay ni un módulo concreto en el repo** — ni `CountryAllowModule`, ni
-  `MaxBalanceModule`, ni `TransferFeesModule`. Para aplicar cualquier regla hay
-  que traerlos del T-REX upstream o escribirlos.
+- `ModularCompliance` no tiene módulos **enganchados** ⇒ no se aplica ninguna regla.
+  Los módulos ahora **sí están en el repo** (vinieron con el paquete oficial):
+  `CountryAllowModule`, `CountryRestrictModule`, `MaxBalanceModule`,
+  `SupplyLimitModule`, `TransferFeesModule`, `TransferRestrictModule`,
+  `ConditionalTransferModule`, `TimeTransfersLimitsModule` y varios más, en
+  `contracts/compliance/modular/modules/`. Falta deployarlos y llamar a
+  `ModularCompliance.addModule()`.
 - Faltan trusted issuers y las ONCHAINID de los holders.
 
 ## 🧪 Tests

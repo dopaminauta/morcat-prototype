@@ -60,7 +60,7 @@
  *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pragma solidity ^0.8.17;
+pragma solidity 0.8.17;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../storage/CTRStorage.sol";
@@ -69,7 +69,7 @@ import "../interface/IClaimTopicsRegistry.sol";
 contract ClaimTopicsRegistry is IClaimTopicsRegistry, OwnableUpgradeable, CTRStorage {
 
     function init() external initializer {
-        __Ownable_init(msg.sender);
+        __Ownable_init();
     }
 
     /**
