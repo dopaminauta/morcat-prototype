@@ -305,3 +305,157 @@ describe("reglas de compliance", () => {
     await assert.rejects(c.token.mint(signers[7].address, ONE(1)), /Compliance not followed/);
   });
 });
+
+describe("dividendos", () => {
+  let ctx: Awaited<ReturnType<typeof setup>>;
+  let dist: any;
+  let alice: any, bob: any, carol: any;
+
+  before(async () => {
+    // Sin módulos de compliance: acá interesa el reparto, y el tope por
+    // inversor obligaría a repartir entre cinco wallets.
+    ctx = await setup();
+    ({ alice, bob, carol } = ctx);
+    const { ethers, contracts: c } = ctx;
+
+    // 600 / 300 / 100 = 1000 tokens en total
+    for (const [w, amt, n] of [[alice, 600, 1], [bob, 300, 2], [carol, 100, 3]] as const) {
+      await (await c.ir.registerIdentity(w.address, idDe(n), ARGENTINA)).wait();
+      await (await c.token.mint(w.address, ONE(amt))).wait();
+    }
+    await (await c.token.unpause()).wait();
+
+    dist = await (await ethers.getContractFactory("DividendDistributor")).deploy(ctx.addresses.token);
+    await dist.waitForDeployment();
+  });
+
+  it("crea una ronda con el alquiler cobrado", async () => {
+    const { ethers } = ctx;
+    await (
+      await dist.createRound([alice.address, bob.address, carol.address], {
+        value: ethers.parseEther("1"),
+      })
+    ).wait();
+
+    assert.equal(Number(await dist.roundsCount()), 1);
+    const [amount, totalSupply] = await dist.getRound(0);
+    assert.equal(amount, ethers.parseEther("1"));
+    assert.equal(totalSupply, ONE(1000));
+  });
+
+  it("reparte en proporción a lo que tiene cada uno", async () => {
+    const { ethers } = ctx;
+    assert.equal(await dist.claimable(0, alice.address), ethers.parseEther("0.6"));
+    assert.equal(await dist.claimable(0, bob.address), ethers.parseEther("0.3"));
+    assert.equal(await dist.claimable(0, carol.address), ethers.parseEther("0.1"));
+  });
+
+  it("🚫 no se puede crear una ronda dejando afuera a un holder", async () => {
+    const { ethers } = ctx;
+    await assert.rejects(
+      dist.createRound([alice.address, bob.address], { value: ethers.parseEther("1") }),
+      /los holders no cubren el supply total/
+    );
+  });
+
+  it("🚫 solo el owner puede repartir", async () => {
+    const { ethers } = ctx;
+    await assert.rejects(
+      dist.connect(alice).createRound([alice.address], { value: ethers.parseEther("1") }),
+      /Ownable/
+    );
+  });
+
+  it("el holder cobra su parte en ETH", async () => {
+    const { ethers } = ctx;
+    const antes = await ethers.provider.getBalance(bob.address);
+
+    const rec = await (await dist.connect(bob).claim(0)).wait();
+    const gas = rec.gasUsed * rec.gasPrice;
+
+    const despues = await ethers.provider.getBalance(bob.address);
+    assert.equal(despues - antes + gas, ethers.parseEther("0.3"));
+    assert.equal(await dist.hasClaimed(0, bob.address), true);
+  });
+
+  it("🚫 no se puede cobrar dos veces", async () => {
+    assert.equal(await dist.claimable(0, bob.address), 0n);
+    await assert.rejects(dist.connect(bob).claim(0), /nada para reclamar/);
+  });
+
+  it("🚫 mover los tokens después del reparto no habilita a cobrar de nuevo", async () => {
+    // El ataque obvio: cobro, mando los tokens a otra wallet mía, cobro otra vez.
+    // El snapshot lo corta: la wallet nueva tenía 0 cuando se creó la ronda.
+    const { contracts: c, ethers } = ctx;
+    const nueva = (await ethers.getSigners())[10];
+    await (await c.ir.registerIdentity(nueva.address, idDe(10), ARGENTINA)).wait();
+
+    await (await c.token.connect(alice).transfer(nueva.address, ONE(600))).wait();
+    assert.equal(await c.token.balanceOf(nueva.address), ONE(600));
+
+    assert.equal(await dist.claimable(0, nueva.address), 0n);
+    await assert.rejects(dist.connect(nueva).claim(0), /nada para reclamar/);
+
+    // Y alice, que ya no tiene tokens, igual conserva su derecho a cobrar.
+    assert.equal(await c.token.balanceOf(alice.address), 0n);
+    assert.equal(await dist.claimable(0, alice.address), ethers.parseEther("0.6"));
+  });
+
+  it("🚫 no se puede recuperar lo no reclamado antes del plazo", async () => {
+    await assert.rejects(dist.recoverUnclaimed(0), /todavia se puede reclamar/);
+  });
+
+  it("una segunda ronda usa los balances nuevos", async () => {
+    const { ethers } = ctx;
+    const nueva = (await ethers.getSigners())[10];
+
+    await (
+      await dist.createRound([nueva.address, bob.address, carol.address], {
+        value: ethers.parseEther("1"),
+      })
+    ).wait();
+
+    // Ahora los 600 de alice los tiene la wallet nueva
+    assert.equal(await dist.claimable(1, nueva.address), ethers.parseEther("0.6"));
+    assert.equal(await dist.claimable(1, alice.address), 0n);
+    // Y lo de la ronda 0 sigue intacto
+    assert.equal(await dist.claimable(0, alice.address), ethers.parseEther("0.6"));
+  });
+});
+
+describe("dividendos — reentrancy", () => {
+  it("🚫 un contrato malicioso no puede reentrar en claim()", async () => {
+    const ctx = await setup();
+    const { ethers, contracts: c, alice } = ctx;
+
+    const dist = await (await ethers.getContractFactory("DividendDistributor"))
+      .deploy(ctx.addresses.token);
+    await dist.waitForDeployment();
+
+    const atacante = await (await ethers.getContractFactory("ReentrantClaimer"))
+      .deploy(await dist.getAddress());
+    await atacante.waitForDeployment();
+    const atacanteAddr = await atacante.getAddress();
+
+    // El atacante tiene el 50% del supply; alice el otro 50%.
+    await (await c.ir.registerIdentity(atacanteAddr, idDe(20), ARGENTINA)).wait();
+    await (await c.ir.registerIdentity(alice.address, idDe(21), ARGENTINA)).wait();
+    await (await c.token.mint(atacanteAddr, ONE(500))).wait();
+    await (await c.token.mint(alice.address, ONE(500))).wait();
+
+    await (
+      await dist.createRound([atacanteAddr, alice.address], { value: ethers.parseEther("10") })
+    ).wait();
+
+    await (await atacante.atacar(0)).wait();
+
+    // Intentó reentrar, pero no cobró ni un wei de más.
+    assert.ok((await atacante.intentos()) > 0n, "el atacante debería haber intentado reentrar");
+    assert.equal(await atacante.reentradasExitosas(), 0n);
+    assert.equal(await ethers.provider.getBalance(atacanteAddr), ethers.parseEther("5"));
+
+    // Y lo de alice quedó intacto.
+    assert.equal(await dist.claimable(0, alice.address), ethers.parseEther("5"));
+    assert.equal(await ethers.provider.getBalance(await dist.getAddress()), ethers.parseEther("5"));
+  });
+});

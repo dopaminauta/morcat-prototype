@@ -42,7 +42,10 @@ const config: HardhatUserConfig = {
     },
   },
   paths: {
-    sources: "./contracts",
+    // Dos raíces a propósito: `contracts/` es el paquete oficial de Tokeny sin
+    // tocar, `contracts-morcat/` es código nuestro. Mezclarlos haría perder la
+    // garantía de que los contratos T-REX son idénticos a los publicados.
+    sources: ["./contracts", "./contracts-morcat"],
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",

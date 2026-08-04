@@ -24,14 +24,29 @@ async function main() {
     },
   });
 
+  // ─── Distribuidor de dividendos ─────────────────────────────────────────
+  // No es parte de T-REX: el estándar no dice nada de repartir ingresos.
+  // Vive en contracts-morcat/ y sólo lee el token, no lo modifica.
+  console.log("\n── Dividendos ──");
+  const distributor = await (await ethers.getContractFactory("DividendDistributor")).deploy(
+    addresses.token
+  );
+  await distributor.waitForDeployment();
+  const distributorAddress = await distributor.getAddress();
+  console.log("  DividendDistributor  :", distributorAddress);
+
   // Se persiste a disco: si perdés la terminal, un deploy en una red real
   // queda huérfano y hay que rehacerlo entero (y repagar el gas).
   const chainId = (await ethers.provider.getNetwork()).chainId.toString();
   const deployment = {
     chainId,
     deployedAt: new Date().toISOString(),
+    // Bloque desde el que escanear eventos Transfer para saber quiénes son
+    // los holders. Sin esto habría que barrer la cadena desde el bloque 0.
+    startBlock: await ethers.provider.getBlockNumber(),
     deployer: deployer.address,
     ...addresses,
+    dividendDistributor: distributorAddress,
     complianceModules: moduleAddresses,
     implementations,
   };

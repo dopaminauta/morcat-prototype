@@ -140,6 +140,58 @@ async function main() {
     await rechaza("wallet sin KYC", () => token.mint(sinKyc, ethers.parseEther("1")));
   }
 
+  // ─── 6. Demo de dividendos ──────────────────────────────────────────────
+  // Simula el cobro de un alquiler y su reparto proporcional.
+  if (d.dividendDistributor) {
+    console.log("\n── Demo de dividendos ──");
+    const dist = await ethers.getContractAt("DividendDistributor", d.dividendDistributor);
+
+    // Los holders se descubren de la cadena, no se hardcodean: se barren los
+    // eventos Transfer y se queda con los que hoy tienen saldo. El contrato
+    // igual exige que la lista cubra el 100% del supply.
+    const logs = await token.queryFilter(token.filters.Transfer(), d.startBlock ?? 0, "latest");
+    const candidatos = new Set<string>();
+    for (const l of logs) {
+      if (l.args?.from && l.args.from !== ethers.ZeroAddress) candidatos.add(l.args.from);
+      if (l.args?.to && l.args.to !== ethers.ZeroAddress) candidatos.add(l.args.to);
+    }
+
+    const holders: string[] = [];
+    let suma = 0n;
+    for (const a of candidatos) {
+      const bal = await token.balanceOf(a);
+      if (bal > 0n) {
+        holders.push(a);
+        suma += bal;
+      }
+    }
+
+    const supply = await token.totalSupply();
+    if (suma !== supply) {
+      console.log(`   ⚠️  Los holders detectados suman ${ethers.formatEther(suma)} de ${ethers.formatEther(supply)}. Salteo el reparto.`);
+    } else {
+      const alquiler = ethers.parseEther("0.01");
+      console.log(`   Alquiler a repartir: ${ethers.formatEther(alquiler)} ETH entre ${holders.length} holders`);
+
+      const ronda = Number(await dist.roundsCount());
+      await (await dist.createRound(holders, { value: alquiler })).wait();
+
+      for (const h of holders) {
+        const parte = await dist.claimable(ronda, h);
+        const pct = (Number(await token.balanceOf(h)) / Number(supply)) * 100;
+        console.log(`   ${h}  ${pct.toFixed(1).padStart(5)}%  →  ${ethers.formatEther(parte)} ETH`);
+      }
+
+      // El deployer cobra lo suyo para mostrar que el claim funciona.
+      if (holders.some((h) => h.toLowerCase() === deployer.address.toLowerCase())) {
+        const antes = await ethers.provider.getBalance(deployer.address);
+        await (await dist.claim(ronda)).wait();
+        const despues = await ethers.provider.getBalance(deployer.address);
+        console.log(`   Cobrado por el deployer ✔ (balance ${despues > antes ? "subió" : "bajó por gas"})`);
+      }
+    }
+  }
+
   console.log(`\n✅ Listo. Total supply: ${ethers.formatEther(await token.totalSupply())} MPT`);
   if (chainId === "11155111") {
     console.log(`   https://sepolia.etherscan.io/address/${d.token}`);

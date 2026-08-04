@@ -31,12 +31,14 @@ morcat-prototype/
 │   ├── proxy/          # TokenProxy + otros proxies
 │   ├── factory/        # TREXFactory + Gateway
 │   └── roles/          # AgentRole
+├── contracts-morcat/   # Código NUESTRO, separado de lo oficial
+│   └── DividendDistributor.sol
 ├── scripts/
 │   ├── trex-suite.ts   # Deploy + wiring + verificación (compartido)
 │   ├── deploy.ts       # Deploy completo → deployments/<chainId>.json
 │   └── interact.ts     # registerIdentity → mint → unpause → transfer
 ├── test/
-│   └── trex.test.ts    # 29 tests
+│   └── trex.test.ts    # 39 tests
 ├── deployments/        # Direcciones por red, generado por deploy.ts
 ├── hardhat.config.ts   # Solidity 0.8.17, Sepolia + hardhat + localhost
 └── .env.example        # Variables de entorno, documentadas
@@ -157,6 +159,43 @@ npx hardhat run scripts/interact.ts --network <red>
    wallet sin KYC: RECHAZADO ✔
 ```
 
+## 💰 Dividendos
+T-REX **no trae nada** de reparto de ingresos: el estándar sólo cubre la
+transferencia compliant. `contracts-morcat/DividendDistributor.sol` es código
+nuestro, vive fuera de `contracts/` y sólo **lee** el token — no lo modifica.
+
+```
+Alquiler cobrado → createRound(holders) → cada holder hace claim()
+```
+
+Tres decisiones que vale la pena entender:
+
+**1. Pull, no push.** Nadie recorre la lista de holders mandándoles plata. Cada
+uno reclama lo suyo. Un push se queda sin gas cuando hay muchos holders, y si
+un holder es un contrato que rechaza ETH, tumba el reparto entero.
+
+**2. Snapshot al crear la ronda.** Los balances se congelan en el momento del
+reparto. Si no, el ataque es obvio: cobro, me mando los tokens a otra wallet,
+cobro de nuevo. Hay un test que lo prueba.
+
+**3. La lista de holders se verifica contra el supply.** El operador pasa las
+direcciones, pero el contrato lee los balances él mismo y **exige que sumen
+exactamente `totalSupply()`**. No se puede dejar a nadie afuera ni inventar
+saldos — omitir un holder hace revertir la transacción.
+
+`interact.ts` descubre los holders barriendo los eventos `Transfer` desde el
+bloque del deploy, así que el demo no depende de una lista hardcodeada:
+
+```
+── Demo de dividendos ──
+   Alquiler a repartir: 0.01 ETH entre 2 holders
+   0xf39F...2266   90.0%  →  0.009 ETH
+   0x7099...79C8   10.0%  →  0.001 ETH
+   Cobrado por el deployer ✔
+```
+
+Lo no reclamado se puede recuperar recién después de `CLAIM_PERIOD` (365 días).
+
 ## ❗ Lo que falta para que sea compliant de verdad
 - El token arranca **pausado** (`unpause()` cuando corresponda).
 - `ClaimTopicsRegistry` está vacío ⇒ `isVerified()` devuelve **true** para
@@ -169,8 +208,8 @@ npx hardhat run scripts/interact.ts --network <red>
 ```bash
 npx hardhat test
 ```
-29 tests sobre `test/trex.test.ts`, cubriendo cableado, reglas de compliance,
-registro de identidades, mint, transferencias y congelamiento. Usan `deployTrexSuite()`
+39 tests sobre `test/trex.test.ts`, cubriendo cableado, reglas de compliance,
+registro de identidades, mint, transferencias, congelamiento y dividendos. Usan `deployTrexSuite()`
 —el mismo código que corre `scripts/deploy.ts`— para que lo que se prueba sea
 lo que se deploya.
 
