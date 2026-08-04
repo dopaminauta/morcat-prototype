@@ -1,0 +1,13 @@
+node_modules/
+.env
+cache/
+artifacts/
+typechain-types/
+
+# Deploys de redes locales efímeras — no sirven fuera de tu máquina.
+# Los de redes reales (ej. deployments/11155111.json de Sepolia) SÍ se commitean.
+deployments/1337.json
+deployments/31337.json
+
+# Material de referencia con copyright — no se redistribuye en el repo.
+docs/*.pdf
