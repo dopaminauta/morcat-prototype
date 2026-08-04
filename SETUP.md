@@ -125,7 +125,7 @@ https://etherscan.io/myapikey). Los constructor args de cada contrato están en
 `deployments/<chainId>.json` y en `scripts/trex-suite.ts`.
 
 Sin esto los contratos quedan como bytecode sin fuente: nadie puede auditarlos
-desde el explorador, ni Gaurang ni un tercero.
+desde el explorador, ni tu equipo ni un tercero.
 
 ## 🛡️ Reglas de compliance activas
 El deploy engancha tres módulos oficiales a la `ModularCompliance`, pensados
@@ -219,19 +219,19 @@ Dos de ellos documentan agujeros conocidos en vez de taparlos:
 - `acepta CUALQUIER address no-cero como ONCHAINID` — `registerIdentity()` no
   valida que sea un contrato Identity. Se cierra cargando claim topics.
 
-## 📚 Libro de referencia
-- `Beginning Ethereum and Solidity Smart Contracts` — Descargado en `~/Descargas/`
-- Roadmap completo: `reports/roadmap_tokenizacion_morcat.md`
+## 📚 Referencias
+- `Beginning Ethereum and Solidity Smart Contracts` (Wei-Meng Lee, Apress)
+- Documentación de T-REX: https://docs.tokeny.com/
 
-## 🔑 Próximos pasos cuando Gaurang mande la wallet
-1. Que él corra primero el paso 0 (deploy local, gratis) y vea `✅ DEPLOY COMPLETO`
+## 🔑 Próximos pasos para deployar en Sepolia
+1. Correr primero el paso 0 (deploy local, gratis) y ver `✅ DEPLOY COMPLETO`
 2. Conseguir Sepolia ETH del faucet
-3. Mandar a la wallet de Gaurang
-4. Él deploya con `npx hardhat run scripts/deploy.ts --network sepolia`
+3. Mandarlo a la wallet que va a deployar
+4. `npx hardhat run scripts/deploy.ts --network sepolia`
 5. Verificar en https://sepolia.etherscan.io/
 
-**Nota:** `npm install` es obligatorio de su lado — el proyecto necesita
-`@nomicfoundation/hardhat-ethers` y `ethers`, que no venían en el repo original.
+**Nota:** `npm install` es obligatorio de cada lado — el proyecto necesita
+`@nomicfoundation/hardhat-ethers` y `ethers`, que no venían en el scaffold inicial.
 
 ---
 *Setup: 04/08/2026 17:25 ART · Camarón 🦐*

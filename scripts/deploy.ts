@@ -15,7 +15,7 @@ async function main() {
 
   // Reglas del prototipo: "Casa Modular #1, Ushuaia".
   // 1000 tokens = la propiedad entera. Nadie puede acumular más del 20%.
-  // Sólo inversores de Argentina (32) e India (356, donde está Gaurang).
+  // Sólo inversores de Argentina (32) e India (356).
   const { addresses, implementations, moduleAddresses } = await deployTrexSuite(ethers, deployer, {
     modules: {
       supplyLimit: ethers.parseEther("1000"),
