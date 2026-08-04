@@ -16,6 +16,19 @@
  *   5. verificación on-chain del cableado
  */
 
+/**
+ * Reglas de compliance a enganchar. Se aplican en el orden en que aparecen.
+ * `undefined` = ese módulo no se deploya.
+ */
+export interface ModuleOptions {
+  /** Supply máximo total, en wei. Ej: 1000 tokens = la propiedad entera. */
+  supplyLimit?: bigint;
+  /** Balance máximo por inversor, en wei. Ej: 20% del total. */
+  maxBalance?: bigint;
+  /** Códigos de país ISO-3166 numéricos permitidos. Ej: [32] = Argentina. */
+  allowedCountries?: number[];
+}
+
 export interface TrexOptions {
   name?: string;
   symbol?: string;
@@ -24,6 +37,8 @@ export interface TrexOptions {
   onchainId?: string;
   /** false para que los tests no ensucien la salida. */
   log?: boolean;
+  /** Módulos de compliance. Omitir = token sin ninguna regla aplicada. */
+  modules?: ModuleOptions;
 }
 
 export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOptions = {}) {
@@ -33,6 +48,7 @@ export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOpti
     decimals = 18,
     onchainId = ethers.ZeroAddress,
     log = true,
+    modules,
   } = opts;
 
   const say = (...a: any[]) => log && console.log(...a);
@@ -138,6 +154,56 @@ export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOpti
   await (await token.addAgent(deployer.address)).wait();
   say("  deployer es agente del Token ✔");
 
+  // ─── 4b. Módulos de compliance ──────────────────────────────────────────
+  // OJO con el orden: MaxBalanceModule sólo acepta bindearse si el token
+  // todavía tiene totalSupply == 0 (ver MaxBalanceModule.canComplianceBind).
+  // O sea que los módulos van SÍ o SÍ antes del primer mint.
+  const moduleAddresses: Record<string, string> = {};
+
+  if (modules) {
+    say("\n── Módulos de compliance ──");
+
+    /**
+     * Cada módulo es UUPS: se deploya la implementación, después un
+     * ModuleProxy que corre initialize(), y recién ahí se lo engancha.
+     * Los setters son onlyComplianceCall, así que van por callModuleFunction.
+     */
+    const addModule = async (contractName: string, setter?: { fn: string; args: any[] }) => {
+      const impl = await deploy(contractName);
+      const initData = impl.interface.encodeFunctionData("initialize", []);
+      const proxy = await deploy("ModuleProxy", await impl.getAddress(), initData);
+      const addr = await proxy.getAddress();
+
+      await (await mc.addModule(addr)).wait();
+      if (setter) {
+        await (
+          await mc.callModuleFunction(impl.interface.encodeFunctionData(setter.fn, setter.args), addr)
+        ).wait();
+      }
+
+      moduleAddresses[contractName] = addr;
+      return addr;
+    };
+
+    if (modules.supplyLimit !== undefined) {
+      await addModule("SupplyLimitModule", { fn: "setSupplyLimit", args: [modules.supplyLimit] });
+      say(`  SupplyLimitModule    : máx ${ethers.formatEther(modules.supplyLimit)} tokens en total ✔`);
+    }
+
+    if (modules.maxBalance !== undefined) {
+      await addModule("MaxBalanceModule", { fn: "setMaxBalance", args: [modules.maxBalance] });
+      say(`  MaxBalanceModule     : máx ${ethers.formatEther(modules.maxBalance)} tokens por inversor ✔`);
+    }
+
+    if (modules.allowedCountries?.length) {
+      await addModule("CountryAllowModule", {
+        fn: "batchAllowCountries",
+        args: [modules.allowedCountries],
+      });
+      say(`  CountryAllowModule   : países ${modules.allowedCountries.join(", ")} ✔`);
+    }
+  }
+
   // ─── 5. Verificación ────────────────────────────────────────────────────
   say("\n── Verificación ──");
 
@@ -169,5 +235,22 @@ export async function deployTrexSuite(ethers: any, deployer: any, opts: TrexOpti
   }
   say("  metadata del token ✔");
 
-  return { addresses, implementations, contracts: { ia, ctr, tir, irs, ir, mc, token } };
+  const bound: string[] = await mc.getModules();
+  const esperados = Object.values(moduleAddresses);
+  for (const [nombre, addr] of Object.entries(moduleAddresses)) {
+    if (!bound.some((b) => b.toLowerCase() === addr.toLowerCase())) {
+      throw new Error(`${nombre} no quedó bindeado a la compliance`);
+    }
+  }
+  if (bound.length !== esperados.length) {
+    throw new Error(`La compliance tiene ${bound.length} módulos, esperaba ${esperados.length}`);
+  }
+  if (esperados.length) say(`  ${esperados.length} módulos bindeados a la compliance ✔`);
+
+  return {
+    addresses,
+    implementations,
+    moduleAddresses,
+    contracts: { ia, ctr, tir, irs, ir, mc, token },
+  };
 }

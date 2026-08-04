@@ -34,7 +34,8 @@ async function main() {
   }
 
   const holder = process.env.HOLDER ?? deployer.address;
-  const amount = ethers.parseEther(process.env.AMOUNT ?? "1000");
+  // 100 por defecto: el MaxBalanceModule topea en 200 por inversor.
+  const amount = ethers.parseEther(process.env.AMOUNT ?? "100");
   const PLACEHOLDER = "0x000000000000000000000000000000000000dEaD";
   const onchainId = process.env.ONCHAIN_ID ?? PLACEHOLDER;
 
@@ -99,6 +100,44 @@ async function main() {
     );
   } else {
     console.log("4. Transfer salteado (hace falta una segunda cuenta local para firmar).");
+  }
+
+  // ─── 5. Demo de compliance ──────────────────────────────────────────────
+  // Lo que hay que mostrarle al cliente: la capa de compliance rechaza de
+  // verdad, no es decorativa.
+  const mc = await ethers.getContractAt("ModularCompliance", d.modularCompliance);
+  const modulos: string[] = await mc.getModules();
+
+  if (modulos.length > 0) {
+    console.log(`\n── Demo de compliance (${modulos.length} módulos activos) ──`);
+
+    const rechaza = async (etiqueta: string, fn: () => Promise<any>) => {
+      try {
+        await (await fn()).wait();
+        console.log(`   ${etiqueta}: PASÓ ⚠️  (se esperaba un rechazo)`);
+      } catch {
+        console.log(`   ${etiqueta}: RECHAZADO ✔`);
+      }
+    };
+
+    const signers = await ethers.getSigners();
+    if (signers.length > 9) {
+      // País no permitido: 156 = China. Sólo están habilitados 32 y 356.
+      const extranjero = signers[9];
+      if (!(await ir.isVerified(extranjero.address))) {
+        await (await ir.registerIdentity(extranjero.address, "0x" + "9".repeat(40), 156)).wait();
+      }
+      await rechaza("inversor de país no permitido", () => token.mint(extranjero.address, ethers.parseEther("1")));
+    }
+
+    // Pasarse del tope por inversor
+    await rechaza("mint por encima del tope por inversor", () =>
+      token.mint(holder, ethers.parseEther("100000"))
+    );
+
+    // Wallet sin KYC
+    const sinKyc = ethers.Wallet.createRandom().address;
+    await rechaza("wallet sin KYC", () => token.mint(sinKyc, ethers.parseEther("1")));
   }
 
   console.log(`\n✅ Listo. Total supply: ${ethers.formatEther(await token.totalSupply())} MPT`);

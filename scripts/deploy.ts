@@ -13,7 +13,16 @@ async function main() {
     "ETH\n"
   );
 
-  const { addresses, implementations } = await deployTrexSuite(ethers, deployer);
+  // Reglas del prototipo: "Casa Modular #1, Ushuaia".
+  // 1000 tokens = la propiedad entera. Nadie puede acumular más del 20%.
+  // Sólo inversores de Argentina (32) e India (356, donde está Gaurang).
+  const { addresses, implementations, moduleAddresses } = await deployTrexSuite(ethers, deployer, {
+    modules: {
+      supplyLimit: ethers.parseEther("1000"),
+      maxBalance: ethers.parseEther("200"),
+      allowedCountries: [32, 356],
+    },
+  });
 
   // Se persiste a disco: si perdés la terminal, un deploy en una red real
   // queda huérfano y hay que rehacerlo entero (y repagar el gas).
@@ -23,6 +32,7 @@ async function main() {
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     ...addresses,
+    complianceModules: moduleAddresses,
     implementations,
   };
 

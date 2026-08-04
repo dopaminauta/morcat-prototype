@@ -4,7 +4,7 @@
 - ✅ **Compila** — 86 contratos, solc 0.8.17 (London)
 - ✅ **Deploya** — suite T-REX completa, verificada end-to-end en la red local
 - ✅ **T-REX v4.1.6 OFICIAL, sin modificar** — `@tokenysolutions/t-rex@4.1.6`
-- ⚠️ **Sin reglas de compliance cargadas** — ver "Lo que falta" abajo
+- ✅ **3 reglas de compliance activas** — supply, tope por inversor y país
 
 ### Por qué los contratos son los oficiales tal cual
 `contracts/` es una copia literal de `@tokenysolutions/t-rex@4.1.6`, el paquete
@@ -24,10 +24,10 @@ implementaciones oficiales.
 ## Estructura
 ```
 morcat-prototype/
-├── contracts/          # T-REX v4.1.3 (ERC-3643)
+├── contracts/          # T-REX v4.1.6 OFICIAL (ERC-3643), sin modificar
 │   ├── token/          # Token + IToken + TokenStorage
 │   ├── registry/       # IdentityRegistry, ClaimTopics, TrustedIssuers
-│   ├── compliance/     # ModularCompliance
+│   ├── compliance/     # ModularCompliance + 12 módulos de reglas
 │   ├── proxy/          # TokenProxy + otros proxies
 │   ├── factory/        # TREXFactory + Gateway
 │   └── roles/          # AgentRole
@@ -36,9 +36,9 @@ morcat-prototype/
 │   ├── deploy.ts       # Deploy completo → deployments/<chainId>.json
 │   └── interact.ts     # registerIdentity → mint → unpause → transfer
 ├── test/
-│   └── trex.test.ts    # 23 tests
+│   └── trex.test.ts    # 29 tests
 ├── deployments/        # Direcciones por red, generado por deploy.ts
-├── hardhat.config.ts   # Solidity 0.8.24, Sepolia + hardhat + localhost
+├── hardhat.config.ts   # Solidity 0.8.17, Sepolia + hardhat + localhost
 └── .env.example        # Variables de entorno, documentadas
 ```
 
@@ -80,14 +80,15 @@ npx hardhat run scripts/deploy.ts --network sepolia
 ### 4. Deploy script hace:
 1. Las 6 **implementaciones** (Token, CTR, IR, IRS, TIR, MC) — nunca se usan
    directo, sólo como destino de delegatecall
-2. **TREXImplementationAuthority** + `addAndUseTREXVersion(4.1.3, ...)`
+2. **TREXImplementationAuthority** + `addAndUseTREXVersion(4.1.6, ...)`
    ← este paso es obligatorio *antes* de cualquier proxy: los proxies leen su
    implementación desde la IA en el propio constructor
 3. Los **proxies** en orden (CTR, TIR, IRS, IR, MC, Token) — cada uno corre su
    `init()` por delegatecall
 4. **Wiring**: bind del IRS al IR, deployer como agente del IR y del Token
-5. **Verificación** on-chain de que todo quedó apuntando a donde corresponde
-6. Guarda todas las direcciones en `deployments/<chainId>.json` (Sepolia = 11155111)
+5. **Módulos de compliance** — antes del primer mint (ver sección abajo)
+6. **Verificación** on-chain de que todo quedó apuntando a donde corresponde
+7. Guarda todas las direcciones en `deployments/<chainId>.json` (Sepolia = 11155111)
 
 > ⚠️ El `IdentityRegistry` recibe `(trustedIssuers, claimTopics, identityStorage)`
 > **en ese orden**. Invertirlos no revierte — las tres son direcciones válidas y
@@ -124,26 +125,52 @@ https://etherscan.io/myapikey). Los constructor args de cada contrato están en
 Sin esto los contratos quedan como bytecode sin fuente: nadie puede auditarlos
 desde el explorador, ni Gaurang ni un tercero.
 
+## 🛡️ Reglas de compliance activas
+El deploy engancha tres módulos oficiales a la `ModularCompliance`, pensados
+para "Casa Modular #1, Ushuaia":
+
+| Módulo | Regla | Qué demuestra |
+|---|---|---|
+| `SupplyLimitModule` | Máx **1000 tokens** en total | 1000 tokens = la propiedad entera; no se puede emitir de más |
+| `MaxBalanceModule` | Máx **200 tokens** por inversor | Nadie acapara más del 20% |
+| `CountryAllowModule` | Sólo países **32** (Argentina) y **356** (India) | Restricción por jurisdicción |
+
+Se configuran en `scripts/deploy.ts`. Para cambiarlas, tocá el objeto
+`modules` que se le pasa a `deployTrexSuite()`.
+
+> **Orden obligatorio:** `MaxBalanceModule` sólo acepta bindearse si el token
+> todavía tiene `totalSupply == 0` (`MaxBalanceModule.canComplianceBind`). Los
+> módulos van **sí o sí antes del primer mint**.
+
+> **El tope es por ONCHAINID, no por wallet** (`MaxBalanceModule.sol:245`). Una
+> persona con dos wallets y el mismo ONCHAINID sigue topeada — no se esquiva
+> abriendo una billetera nueva. Hay un test que lo prueba.
+
+### Ver los rechazos en vivo
+```bash
+npx hardhat run scripts/interact.ts --network <red>
+```
+```
+── Demo de compliance (3 módulos activos) ──
+   inversor de país no permitido: RECHAZADO ✔
+   mint por encima del tope por inversor: RECHAZADO ✔
+   wallet sin KYC: RECHAZADO ✔
+```
+
 ## ❗ Lo que falta para que sea compliant de verdad
-El deploy levanta la infraestructura, no las reglas. Hoy:
 - El token arranca **pausado** (`unpause()` cuando corresponda).
 - `ClaimTopicsRegistry` está vacío ⇒ `isVerified()` devuelve **true** para
-  cualquier identidad registrada (`IdentityRegistry.sol:176`).
-- `ModularCompliance` no tiene módulos **enganchados** ⇒ no se aplica ninguna regla.
-  Los módulos ahora **sí están en el repo** (vinieron con el paquete oficial):
-  `CountryAllowModule`, `CountryRestrictModule`, `MaxBalanceModule`,
-  `SupplyLimitModule`, `TransferFeesModule`, `TransferRestrictModule`,
-  `ConditionalTransferModule`, `TimeTransfersLimitsModule` y varios más, en
-  `contracts/compliance/modular/modules/`. Falta deployarlos y llamar a
-  `ModularCompliance.addModule()`.
-- Faltan trusted issuers y las ONCHAINID de los holders.
+  cualquier identidad registrada (`IdentityRegistry.sol:176`). O sea: las
+  reglas de compliance de arriba **sí** se aplican, pero el KYC en sí todavía
+  no valida nada. Son dos capas distintas.
+- Faltan trusted issuers reales y las ONCHAINID de verdad de los holders.
 
 ## 🧪 Tests
 ```bash
 npx hardhat test
 ```
-23 tests sobre `test/trex.test.ts`, cubriendo cableado, registro de
-identidades, mint, transferencias y congelamiento. Usan `deployTrexSuite()`
+29 tests sobre `test/trex.test.ts`, cubriendo cableado, reglas de compliance,
+registro de identidades, mint, transferencias y congelamiento. Usan `deployTrexSuite()`
 —el mismo código que corre `scripts/deploy.ts`— para que lo que se prueba sea
 lo que se deploya.
 

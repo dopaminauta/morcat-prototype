@@ -12,12 +12,19 @@ import { deployTrexSuite } from "../scripts/trex-suite.js";
 
 const ONE = (n: string | number) => BigInt(n) * 10n ** 18n;
 
-async function setup() {
+async function setup(modules?: Parameters<typeof deployTrexSuite>[2]) {
   const { ethers } = await network.getOrCreate();
   const [deployer, alice, bob, carol] = await ethers.getSigners();
-  const suite = await deployTrexSuite(ethers, deployer, { log: false });
+  const suite = await deployTrexSuite(ethers, deployer, { log: false, ...modules });
   return { ethers, deployer, alice, bob, carol, ...suite };
 }
+
+/** Cualquier address no-cero sirve mientras el ClaimTopicsRegistry esté vacío. */
+const ID = "0x000000000000000000000000000000000000dEaD";
+/** ONCHAINIDs distintos = inversores distintos a ojos de la compliance. */
+const idDe = (n: number) => "0x" + (n + 1).toString(16).padStart(40, "0");
+const ARGENTINA = 32;
+const CHINA = 156;
 
 describe("deploy y cableado", () => {
   let ctx: Awaited<ReturnType<typeof setup>>;
@@ -225,5 +232,76 @@ describe("congelamiento", () => {
     await (await c.token.unfreezePartialTokens(alice.address, ONE(950))).wait();
     await (await c.token.connect(alice).transfer(bob.address, ONE(100))).wait();
     assert.equal(await c.token.balanceOf(bob.address), ONE(150));
+  });
+});
+
+describe("reglas de compliance", () => {
+  let ctx: Awaited<ReturnType<typeof setup>>;
+
+  before(async () => {
+    ctx = await setup({
+      modules: {
+        supplyLimit: 1000n * 10n ** 18n,
+        maxBalance: 200n * 10n ** 18n,
+        allowedCountries: [ARGENTINA],
+      },
+    });
+  });
+
+  it("engancha los tres módulos a la compliance", async () => {
+    const mods = await ctx.contracts.mc.getModules();
+    assert.equal(mods.length, 3);
+  });
+
+  it("un inversor de país permitido puede recibir tokens", async () => {
+    const { contracts: c, alice } = ctx;
+    await (await c.ir.registerIdentity(alice.address, idDe(1), ARGENTINA)).wait();
+    await (await c.token.mint(alice.address, ONE(200))).wait();
+    assert.equal(await c.token.balanceOf(alice.address), ONE(200));
+  });
+
+  it("🚫 rechaza pasar el máximo por inversor (20%)", async () => {
+    const { contracts: c, alice } = ctx;
+    await assert.rejects(c.token.mint(alice.address, ONE(1)), /Compliance not followed/);
+  });
+
+  it("🚫 rechaza a un inversor de un país no permitido", async () => {
+    const { contracts: c, bob } = ctx;
+    await (await c.ir.registerIdentity(bob.address, idDe(2), CHINA)).wait();
+    // Está verificado —el KYC pasa— pero la compliance lo frena igual.
+    assert.equal(await c.ir.isVerified(bob.address), true);
+    await assert.rejects(c.token.mint(bob.address, ONE(1)), /Compliance not followed/);
+  });
+
+  it("🚫 el tope por inversor NO se esquiva con una segunda wallet", async () => {
+    // MaxBalanceModule cuenta por ONCHAINID, no por address
+    // (MaxBalanceModule.sol:245). Alice ya tiene sus 200 en la primera wallet;
+    // si se registra una segunda con el MISMO ONCHAINID, sigue topeada.
+    const { ethers, contracts: c } = ctx;
+    const segundaWallet = (await ethers.getSigners())[8];
+
+    await (await c.ir.registerIdentity(segundaWallet.address, idDe(1), ARGENTINA)).wait();
+    assert.equal(await c.ir.isVerified(segundaWallet.address), true);
+    assert.equal(await c.token.balanceOf(segundaWallet.address), 0n);
+
+    await assert.rejects(c.token.mint(segundaWallet.address, ONE(1)), /Compliance not followed/);
+  });
+
+  it("🚫 rechaza pasar el supply total de la propiedad", async () => {
+    const { ethers, contracts: c } = ctx;
+    const signers = await ethers.getSigners();
+
+    // signers[1] es alice (ya tiene 200) y signers[2] es bob (país no permitido).
+    // 4 inversores más × 200 = 800, más los 200 de alice = 1000 (el 100%)
+    // Cada uno con su propio ONCHAINID, si no MaxBalanceModule los suma.
+    for (let i = 3; i <= 6; i++) {
+      await (await c.ir.registerIdentity(signers[i].address, idDe(i), ARGENTINA)).wait();
+      await (await c.token.mint(signers[i].address, ONE(200))).wait();
+    }
+    assert.equal(await c.token.totalSupply(), ONE(1000));
+
+    // el inversor siguiente ya no entra: la propiedad está vendida entera
+    await (await c.ir.registerIdentity(signers[7].address, idDe(7), ARGENTINA)).wait();
+    await assert.rejects(c.token.mint(signers[7].address, ONE(1)), /Compliance not followed/);
   });
 });
