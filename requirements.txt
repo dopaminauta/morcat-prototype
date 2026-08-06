@@ -1,0 +1,14 @@
+# Dependencias Python del backend (scripts/app.py, webhook_server.py, sumsub_kyc.py).
+#
+# El sistema es PEP 668 (no deja instalar paquetes al Python global), así que va
+# en un venv del repo:
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/python scripts/app.py
+#
+Flask>=3.0
+flask-cors>=4.0
+PyJWT>=2.8
+eth-account>=0.13
+requests>=2.31

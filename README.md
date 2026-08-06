@@ -240,3 +240,53 @@ under GPL-3.0, which this repository redistributes. Our own code in
 `contracts-morcat/` and `scripts/` is released under the same license.
 
 See [LICENSE](LICENSE).
+
+## KYC — Integración Sumsub (sandbox, en progreso)
+
+**Scripts:**
+- `scripts/sumsub_kyc.py` — crear applicant, access token para WebSDK, status, verificar firma
+- `scripts/webhook_server.py` — listener de webhooks, valida firma, emite claim on-chain
+- `scripts/app.py` — API server que consume el front: auth por wallet (JWT) + KYC
+
+**Setup del backend Python** (el sistema es PEP 668, va en venv):
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+**Uso:**
+```bash
+# 1. Crear .env con credenciales del sandbox (Dev space → App tokens)
+cp .env.example .env   # + SUMSUB_APP_TOKEN / SUMSUB_SECRET_KEY / JWT_SECRET
+
+# 2. Crear un applicant + token para el WebSDK
+python3 scripts/sumsub_kyc.py create --email inversor@mail.com --wallet 0x1234
+
+# 3a. Levantar el API completo (auth + KYC + webhook) en el puerto 3000,
+#     que es el que el front espera por default
+.venv/bin/python scripts/app.py
+
+# 3b. …o sólo el webhook listener, en el 8080
+SUMSUB_SECRET_KEY=... python3 scripts/webhook_server.py
+
+# 4. Exponer con túnel (cloudflared/ngrok) y configurar en Dashboard
+#    → Webhooks → https://<tunnel>/webhooks/sumsub
+```
+
+Sin `SUMSUB_APP_TOKEN`/`SUMSUB_SECRET_KEY`, `app.py` arranca igual en **modo mock**:
+`/api/kyc/start` devuelve applicants falsos marcados con `"mock": true`. Sirve
+para levantar el front sin credenciales, no para probar el WebSDK.
+
+**Endpoints de `app.py`:**
+
+| Método | Ruta | Auth | Qué hace |
+|---|---|---|---|
+| GET | `/health` | — | estado del server |
+| GET | `/api/auth/nonce?wallet=` | — | nonce de un solo uso (5 min) + mensaje a firmar |
+| POST | `/api/auth/login` | — | `{wallet, signature}` → JWT |
+| POST | `/api/kyc/start` | JWT | crea el applicant, devuelve el token del WebSDK |
+| GET | `/api/kyc/status?applicantId=` | JWT | estado real de Sumsub, fallback al store |
+| POST | `/webhooks/sumsub` | firma HMAC | delegado a `webhook_server.py` sin modificarlo |
+
+**Pendiente:** conectar `claim_onchain()` al IdentityRegistry del T-REX
+(TrustedIssuersRegistry + ClaimTopicsRegistry + addClaim).

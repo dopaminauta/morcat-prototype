@@ -4,6 +4,10 @@ cache/
 artifacts/
 typechain-types/
 
+# Backend Python
+.venv/
+__pycache__/
+
 # Deploys de redes locales efímeras — no sirven fuera de tu máquina.
 # Los de redes reales (ej. deployments/11155111.json de Sepolia) SÍ se commitean.
 deployments/1337.json
