@@ -110,7 +110,9 @@ def create_applicant(external_user_id: str, email: str = "", wallet: str = "") -
     if email:
         body["email"] = email
     if wallet:
-        body["metadata"] = json.dumps({"wallet": wallet})
+        # Formato actual de Sumsub (2026-07+): array de pares key/value.
+        # Antes era JSON string y la API devuelve 400 Malformed.
+        body["metadata"] = [{"key": "wallet", "value": wallet}]
     req = requests.Request(
         "POST",
         f"{BASE_URL}/resources/applicants?levelName={LEVEL_NAME}",
